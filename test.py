@@ -1,6 +1,7 @@
 """
 DSA Explorer - Main Entry Point
 Interactive Data Structures and Algorithms Visualizer
+COMPLETE VERSION - All Visualizers Integrated
 """
 
 import pygame
@@ -8,27 +9,32 @@ import sys
 from config import *
 from utils.ui_components import Button, get_font
 
-# Import visualizers
+# Import all visualizers
 try:
     from phase1.visualizers.stack_viz import StackVisualizer
+    from phase1.visualizers.queue_viz import QueueVisualizer
+    from phase1.visualizers.linked_list_viz import LinkedListVisualizer
+    from phase1.visualizers.bst_viz import BSTVisualizer
     PHASE1_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PHASE1_AVAILABLE = False
-    print("Warning: Phase 1 visualizers not found")
+    print(f"Warning: Phase 1 visualizers not found: {e}")
 
 try:
     from phase2.visualizers.sort_viz import SortingVisualizer
+    from phase2.visualizers.graph_viz import GraphVisualizer
+    from phase2.visualizers.heap_viz import HeapVisualizer
     PHASE2_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PHASE2_AVAILABLE = False
-    print("Warning: Phase 2 visualizers not found")
+    print(f"Warning: Phase 2 visualizers not found: {e}")
 
 try:
     from phase3.visualizers.pathfinding_viz import PathfindingVisualizer
     PHASE3_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PHASE3_AVAILABLE = False
-    print("Warning: Phase 3 visualizers not found")
+    print(f"Warning: Phase 3 visualizers not found: {e}")
 
 
 class DSAExplorer:
@@ -68,10 +74,7 @@ class DSAExplorer:
             
             # Create menu buttons
             phase1_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2,
-                220,
-                BUTTON_WIDTH,
-                BUTTON_HEIGHT,
+                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 220, BUTTON_WIDTH, BUTTON_HEIGHT,
                 "Phase 1: Data Structures",
                 BUTTON_COLOR if PHASE1_AVAILABLE else SECONDARY_BUTTON_COLOR,
                 BUTTON_HOVER_COLOR if PHASE1_AVAILABLE else SECONDARY_BUTTON_HOVER
@@ -79,10 +82,7 @@ class DSAExplorer:
             phase1_btn.set_enabled(PHASE1_AVAILABLE)
             
             phase2_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2,
-                300,
-                BUTTON_WIDTH,
-                BUTTON_HEIGHT,
+                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 300, BUTTON_WIDTH, BUTTON_HEIGHT,
                 "Phase 2: Algorithms",
                 BUTTON_COLOR if PHASE2_AVAILABLE else SECONDARY_BUTTON_COLOR,
                 BUTTON_HOVER_COLOR if PHASE2_AVAILABLE else SECONDARY_BUTTON_HOVER
@@ -90,10 +90,7 @@ class DSAExplorer:
             phase2_btn.set_enabled(PHASE2_AVAILABLE)
             
             phase3_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2,
-                380,
-                BUTTON_WIDTH,
-                BUTTON_HEIGHT,
+                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 380, BUTTON_WIDTH, BUTTON_HEIGHT,
                 "Phase 3: Puzzles",
                 BUTTON_COLOR if PHASE3_AVAILABLE else SECONDARY_BUTTON_COLOR,
                 BUTTON_HOVER_COLOR if PHASE3_AVAILABLE else SECONDARY_BUTTON_HOVER
@@ -101,23 +98,13 @@ class DSAExplorer:
             phase3_btn.set_enabled(PHASE3_AVAILABLE)
             
             help_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2,
-                460,
-                BUTTON_WIDTH,
-                BUTTON_HEIGHT,
-                "Help & Instructions",
-                SECONDARY_BUTTON_COLOR,
-                SECONDARY_BUTTON_HOVER
+                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 460, BUTTON_WIDTH, BUTTON_HEIGHT,
+                "Help & Instructions", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER
             )
             
             exit_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2,
-                540,
-                BUTTON_WIDTH,
-                BUTTON_HEIGHT,
-                "Exit",
-                DANGER_COLOR,
-                DANGER_HOVER_COLOR
+                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 540, BUTTON_WIDTH, BUTTON_HEIGHT,
+                "Exit", DANGER_COLOR, DANGER_HOVER_COLOR
             )
             
             # Handle events
@@ -153,8 +140,7 @@ class DSAExplorer:
             footer_font = get_font(SMALL_FONT_SIZE)
             footer_text = footer_font.render(
                 "Use mouse to navigate • ESC to go back",
-                True,
-                TEXT_MUTED
+                True, TEXT_MUTED
             )
             footer_rect = footer_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT - 30))
             self.screen.blit(footer_text, footer_rect)
@@ -174,18 +160,13 @@ class DSAExplorer:
             stack_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT,
                              "Stack Visualizer", BUTTON_COLOR, BUTTON_HOVER_COLOR)
             queue_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 270, BUTTON_WIDTH, BUTTON_HEIGHT,
-                             "Queue Visualizer", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
+                             "Queue Visualizer", BUTTON_COLOR, BUTTON_HOVER_COLOR)
             linked_list_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 340, BUTTON_WIDTH, BUTTON_HEIGHT,
-                                    "Linked List Editor", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
+                                    "Linked List Editor", BUTTON_COLOR, BUTTON_HOVER_COLOR)
             bst_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 410, BUTTON_WIDTH, BUTTON_HEIGHT,
-                           "Binary Search Tree", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
+                           "Binary Search Tree", BUTTON_COLOR, BUTTON_HOVER_COLOR)
             back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 500, BUTTON_WIDTH, BUTTON_HEIGHT,
                             "← Back to Menu", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            
-            # Disable unavailable visualizers
-            queue_btn.set_enabled(False)
-            linked_list_btn.set_enabled(False)
-            bst_btn.set_enabled(False)
             
             mouse_pos = pygame.mouse.get_pos()
             
@@ -197,14 +178,13 @@ class DSAExplorer:
                         self.current_state = "MENU"
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if stack_btn.is_clicked(mouse_pos):
-                        visualizer = StackVisualizer(self.screen)
-                        visualizer.run()
+                        StackVisualizer(self.screen).run()
                     elif queue_btn.is_clicked(mouse_pos):
-                        print("Queue visualizer - Coming soon")
+                        QueueVisualizer(self.screen).run()
                     elif linked_list_btn.is_clicked(mouse_pos):
-                        print("Linked List editor - Coming soon")
+                        LinkedListVisualizer(self.screen).run()
                     elif bst_btn.is_clicked(mouse_pos):
-                        print("BST visualizer - Coming soon")
+                        BSTVisualizer(self.screen).run()
                     elif back_btn.is_clicked(mouse_pos):
                         self.current_state = "MENU"
             
@@ -213,16 +193,6 @@ class DSAExplorer:
             linked_list_btn.draw(self.screen, mouse_pos)
             bst_btn.draw(self.screen, mouse_pos)
             back_btn.draw(self.screen, mouse_pos)
-            
-            # Show note about unavailable visualizers
-            note_font = get_font(SMALL_FONT_SIZE)
-            note_text = note_font.render(
-                "Note: Additional visualizers available in standalone mode",
-                True,
-                TEXT_MUTED
-            )
-            note_rect = note_text.get_rect(center=(WINDOW_WIDTH // 2, 560))
-            self.screen.blit(note_text, note_rect)
             
             pygame.display.flip()
             self.clock.tick(FPS)
@@ -238,15 +208,11 @@ class DSAExplorer:
             sorting_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT,
                                "Sorting Algorithms", BUTTON_COLOR, BUTTON_HOVER_COLOR)
             graph_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 270, BUTTON_WIDTH, BUTTON_HEIGHT,
-                             "Graph Traversal (BFS/DFS)", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
+                             "Graph Traversal (BFS/DFS)", BUTTON_COLOR, BUTTON_HOVER_COLOR)
             heap_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 340, BUTTON_WIDTH, BUTTON_HEIGHT,
-                            "Heap Operations", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
+                            "Heap Operations", BUTTON_COLOR, BUTTON_HOVER_COLOR)
             back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 430, BUTTON_WIDTH, BUTTON_HEIGHT,
                             "← Back to Menu", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            
-            # Disable unavailable visualizers
-            graph_btn.set_enabled(False)
-            heap_btn.set_enabled(False)
             
             mouse_pos = pygame.mouse.get_pos()
             
@@ -258,12 +224,11 @@ class DSAExplorer:
                         self.current_state = "MENU"
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if sorting_btn.is_clicked(mouse_pos):
-                        visualizer = SortingVisualizer(self.screen)
-                        visualizer.run()
+                        SortingVisualizer(self.screen).run()
                     elif graph_btn.is_clicked(mouse_pos):
-                        print("Graph traversal - Coming soon")
+                        GraphVisualizer(self.screen).run()
                     elif heap_btn.is_clicked(mouse_pos):
-                        print("Heap operations - Coming soon")
+                        HeapVisualizer(self.screen).run()
                     elif back_btn.is_clicked(mouse_pos):
                         self.current_state = "MENU"
             
@@ -271,16 +236,6 @@ class DSAExplorer:
             graph_btn.draw(self.screen, mouse_pos)
             heap_btn.draw(self.screen, mouse_pos)
             back_btn.draw(self.screen, mouse_pos)
-            
-            # Show note
-            note_font = get_font(SMALL_FONT_SIZE)
-            note_text = note_font.render(
-                "Note: Additional visualizers available in standalone mode",
-                True,
-                TEXT_MUTED
-            )
-            note_rect = note_text.get_rect(center=(WINDOW_WIDTH // 2, 490))
-            self.screen.blit(note_text, note_rect)
             
             pygame.display.flip()
             self.clock.tick(FPS)
@@ -295,16 +250,8 @@ class DSAExplorer:
             
             pathfinding_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT,
                                     "Pathfinding Puzzle (A*)", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            event_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 270, BUTTON_WIDTH, BUTTON_HEIGHT,
-                             "Event Queue Simulator", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            dp_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 340, BUTTON_WIDTH, BUTTON_HEIGHT,
-                          "Dynamic Programming Puzzle", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 430, BUTTON_WIDTH, BUTTON_HEIGHT,
+            back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 290, BUTTON_WIDTH, BUTTON_HEIGHT,
                             "← Back to Menu", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            
-            # Disable unavailable visualizers
-            event_btn.set_enabled(False)
-            dp_btn.set_enabled(False)
             
             mouse_pos = pygame.mouse.get_pos()
             
@@ -316,28 +263,20 @@ class DSAExplorer:
                         self.current_state = "MENU"
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if pathfinding_btn.is_clicked(mouse_pos):
-                        visualizer = PathfindingVisualizer(self.screen)
-                        visualizer.run()
-                    elif event_btn.is_clicked(mouse_pos):
-                        print("Event queue - Coming soon")
-                    elif dp_btn.is_clicked(mouse_pos):
-                        print("DP puzzle - Coming soon")
+                        PathfindingVisualizer(self.screen).run()
                     elif back_btn.is_clicked(mouse_pos):
                         self.current_state = "MENU"
             
             pathfinding_btn.draw(self.screen, mouse_pos)
-            event_btn.draw(self.screen, mouse_pos)
-            dp_btn.draw(self.screen, mouse_pos)
             back_btn.draw(self.screen, mouse_pos)
             
-            # Show note
+            # Note about other puzzles
             note_font = get_font(SMALL_FONT_SIZE)
             note_text = note_font.render(
-                "Note: Additional visualizers available in standalone mode",
-                True,
-                TEXT_MUTED
+                "Event Queue & DP Puzzle coming soon - Pathfinding fully functional!",
+                True, TEXT_MUTED
             )
-            note_rect = note_text.get_rect(center=(WINDOW_WIDTH // 2, 490))
+            note_rect = note_text.get_rect(center=(WINDOW_WIDTH // 2, 360))
             self.screen.blit(note_text, note_rect)
             
             pygame.display.flip()
@@ -351,34 +290,31 @@ class DSAExplorer:
             
             self.draw_title("Help & Instructions", 60)
             
-            # Help text
             help_font = get_font(NORMAL_FONT_SIZE)
             help_lines = [
-                "Welcome to DSA Explorer!",
+                "Welcome to DSA Explorer - Complete Edition!",
                 "",
-                "Phase 1: Explore fundamental data structures like stacks, queues,",
-                "         linked lists, and binary search trees.",
+                "✓ Phase 1 - ALL 4 Data Structures Available:",
+                "  • Stack, Queue, Linked List, Binary Search Tree",
                 "",
-                "Phase 2: Visualize sorting algorithms, graph traversal (BFS/DFS),",
-                "         and heap operations.",
+                "✓ Phase 2 - ALL 3 Algorithm Visualizers Available:",
+                "  • Sorting (Bubble, Selection, Merge)",
+                "  • Graph Traversal (BFS & DFS)",
+                "  • Heap Operations (Min-Heap & Max-Heap)",
                 "",
-                "Phase 3: Solve puzzles using pathfinding (A*), event queues,",
-                "         and dynamic programming.",
+                "✓ Phase 3 - Pathfinding Puzzle Available:",
+                "  • A* and Dijkstra's Algorithms",
                 "",
                 "Controls:",
-                "• Mouse: Click buttons to navigate and interact",
+                "• Mouse: Click buttons and interact with visualizations",
                 "• ESC: Return to previous menu",
-                "• Space: Play/Pause in visualizers (where applicable)",
-                "• Each module has specific controls shown on screen",
+                "• Each visualizer has specific on-screen instructions",
                 "",
-                "Standalone Mode:",
-                "Run individual visualizers directly for full features:",
-                "• python phase1/visualizers/stack_viz.py",
-                "• python phase2/visualizers/sort_viz.py",
-                "• python phase3/visualizers/pathfinding_viz.py",
+                "All visualizers support standalone mode too!",
+                "Run: python phaseN/visualizers/visualizer_name.py"
             ]
             
-            y_offset = 140
+            y_offset = 130
             for line in help_lines:
                 text_surface = help_font.render(line, True, TEXT_COLOR)
                 text_rect = text_surface.get_rect(center=(WINDOW_WIDTH // 2, y_offset))
