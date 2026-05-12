@@ -1,7 +1,7 @@
 """
 DSA Explorer - Main Entry Point
 Interactive Data Structures and Algorithms Visualizer
-COMPLETE VERSION - All Visualizers Integrated
+COMPLETE VERSION - All Visualizers + In-App Test Runner
 """
 
 import pygame
@@ -9,7 +9,7 @@ import sys
 from config import *
 from utils.ui_components import Button, get_font
 
-# Import all visualizers
+# ── Phase 1 ──────────────────────────────────────────────────────────────────
 try:
     from phase1.visualizers.stack_viz import StackVisualizer
     from phase1.visualizers.queue_viz import QueueVisualizer
@@ -20,6 +20,7 @@ except ImportError as e:
     PHASE1_AVAILABLE = False
     print(f"Warning: Phase 1 visualizers not found: {e}")
 
+# ── Phase 2 ──────────────────────────────────────────────────────────────────
 try:
     from phase2.visualizers.sort_viz import SortingVisualizer
     from phase2.visualizers.graph_viz import GraphVisualizer
@@ -29,326 +30,310 @@ except ImportError as e:
     PHASE2_AVAILABLE = False
     print(f"Warning: Phase 2 visualizers not found: {e}")
 
+# ── Phase 3 ──────────────────────────────────────────────────────────────────
 try:
     from phase3.visualizers.pathfinding_viz import PathfindingVisualizer
+    from phase3.visualizers.event_queue_viz import EventQueueVisualizer
+    from phase3.visualizers.dp_puzzle_viz import DPPuzzleVisualizer
     PHASE3_AVAILABLE = True
 except ImportError as e:
     PHASE3_AVAILABLE = False
     print(f"Warning: Phase 3 visualizers not found: {e}")
 
+# ── Test runner ───────────────────────────────────────────────────────────────
+try:
+    import importlib.util as _ilu, os as _os
+    # test_runner_viz.py lives in the same directory as test.py (project root)
+    _root = _os.path.dirname(_os.path.abspath(__file__))
+    _spec = _ilu.spec_from_file_location(
+        "test_runner_viz",
+        _os.path.join(_root, "test_runner_viz.py")
+    )
+    _mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    TestRunnerVisualizer = _mod.TestRunnerVisualizer
+    TESTS_AVAILABLE = True
+except Exception as e:
+    TESTS_AVAILABLE = False
+    TestRunnerVisualizer = None
+    print(f"Warning: Test runner not found: {e}")
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _btn(screen_w, y, text, color, hover, enabled=True):
+    b = Button(screen_w // 2 - BUTTON_WIDTH // 2, y, BUTTON_WIDTH, BUTTON_HEIGHT,
+               text, color, hover)
+    b.set_enabled(enabled)
+    return b
+
 
 class DSAExplorer:
-    """Main application class managing the DSA Explorer"""
-    
     def __init__(self):
-        """Initialize the DSA Explorer application"""
         pygame.init()
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("DSA Explorer & Visualizer")
         self.clock = pygame.time.Clock()
         self.running = True
         self.current_state = "MENU"
-        
-    def draw_title(self, text, y_pos):
-        """Draw a centered title on screen"""
-        title_font = get_font(TITLE_FONT_SIZE)
-        title_surface = title_font.render(text, True, TEXT_COLOR)
-        title_rect = title_surface.get_rect(center=(WINDOW_WIDTH // 2, y_pos))
-        self.screen.blit(title_surface, title_rect)
-    
-    def draw_subtitle(self, text, y_pos):
-        """Draw a centered subtitle on screen"""
-        subtitle_font = get_font(SUBTITLE_FONT_SIZE)
-        subtitle_surface = subtitle_font.render(text, True, TEXT_SECONDARY)
-        subtitle_rect = subtitle_surface.get_rect(center=(WINDOW_WIDTH // 2, y_pos))
-        self.screen.blit(subtitle_surface, subtitle_rect)
-    
+
+    # ── Shared drawing ────────────────────────────────────────────────────────
+
+    def _title(self, text, y):
+        s = get_font(TITLE_FONT_SIZE).render(text, True, TEXT_COLOR)
+        self.screen.blit(s, s.get_rect(center=(WINDOW_WIDTH // 2, y)))
+
+    def _subtitle(self, text, y):
+        s = get_font(SUBTITLE_FONT_SIZE).render(text, True, TEXT_SECONDARY)
+        self.screen.blit(s, s.get_rect(center=(WINDOW_WIDTH // 2, y)))
+
+    def _footer(self):
+        s = get_font(SMALL_FONT_SIZE).render(
+            "Use mouse to navigate • ESC to go back", True, TEXT_MUTED)
+        self.screen.blit(s, s.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT - 30)))
+
+    def _event_loop(self, buttons_map):
+        """Generic event loop.  buttons_map: {button: action_callable | state_string}
+        Returns False when QUIT or ESC, True otherwise.  Call per frame."""
+        mouse_pos = pygame.mouse.get_pos()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+                return False, mouse_pos
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return False, mouse_pos
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for btn, action in buttons_map.items():
+                    if btn.is_clicked(mouse_pos):
+                        if callable(action):
+                            action()
+                        else:
+                            self.current_state = action
+                        return True, mouse_pos
+        return True, mouse_pos
+
+    # ── Main menu ─────────────────────────────────────────────────────────────
+
     def main_menu(self):
-        """Display and handle the main menu"""
         while self.running and self.current_state == "MENU":
             self.screen.fill(BG_COLOR)
-            
-            # Draw title and subtitle
-            self.draw_title("DSA EXPLORER", 100)
-            self.draw_subtitle("Interactive Data Structures & Algorithms Visualizer", 150)
-            
-            # Create menu buttons
-            phase1_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 220, BUTTON_WIDTH, BUTTON_HEIGHT,
-                "Phase 1: Data Structures",
-                BUTTON_COLOR if PHASE1_AVAILABLE else SECONDARY_BUTTON_COLOR,
-                BUTTON_HOVER_COLOR if PHASE1_AVAILABLE else SECONDARY_BUTTON_HOVER
-            )
-            phase1_btn.set_enabled(PHASE1_AVAILABLE)
-            
-            phase2_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 300, BUTTON_WIDTH, BUTTON_HEIGHT,
-                "Phase 2: Algorithms",
-                BUTTON_COLOR if PHASE2_AVAILABLE else SECONDARY_BUTTON_COLOR,
-                BUTTON_HOVER_COLOR if PHASE2_AVAILABLE else SECONDARY_BUTTON_HOVER
-            )
-            phase2_btn.set_enabled(PHASE2_AVAILABLE)
-            
-            phase3_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 380, BUTTON_WIDTH, BUTTON_HEIGHT,
-                "Phase 3: Puzzles",
-                BUTTON_COLOR if PHASE3_AVAILABLE else SECONDARY_BUTTON_COLOR,
-                BUTTON_HOVER_COLOR if PHASE3_AVAILABLE else SECONDARY_BUTTON_HOVER
-            )
-            phase3_btn.set_enabled(PHASE3_AVAILABLE)
-            
-            help_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 460, BUTTON_WIDTH, BUTTON_HEIGHT,
-                "Help & Instructions", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER
-            )
-            
-            exit_btn = Button(
-                WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 540, BUTTON_WIDTH, BUTTON_HEIGHT,
-                "Exit", DANGER_COLOR, DANGER_HOVER_COLOR
-            )
-            
-            # Handle events
-            mouse_pos = pygame.mouse.get_pos()
-            
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+            self._title("DSA EXPLORER", 100)
+            self._subtitle("Interactive Data Structures & Algorithms Visualizer", 150)
+
+            p1_btn = _btn(WINDOW_WIDTH, 220, "Phase 1: Data Structures",
+                          BUTTON_COLOR if PHASE1_AVAILABLE else SECONDARY_BUTTON_COLOR,
+                          BUTTON_HOVER_COLOR if PHASE1_AVAILABLE else SECONDARY_BUTTON_HOVER,
+                          PHASE1_AVAILABLE)
+            p2_btn = _btn(WINDOW_WIDTH, 300, "Phase 2: Algorithms",
+                          BUTTON_COLOR if PHASE2_AVAILABLE else SECONDARY_BUTTON_COLOR,
+                          BUTTON_HOVER_COLOR if PHASE2_AVAILABLE else SECONDARY_BUTTON_HOVER,
+                          PHASE2_AVAILABLE)
+            p3_btn = _btn(WINDOW_WIDTH, 380, "Phase 3: Puzzles",
+                          BUTTON_COLOR if PHASE3_AVAILABLE else SECONDARY_BUTTON_COLOR,
+                          BUTTON_HOVER_COLOR if PHASE3_AVAILABLE else SECONDARY_BUTTON_HOVER,
+                          PHASE3_AVAILABLE)
+            help_btn = _btn(WINDOW_WIDTH, 460, "Help & Instructions",
+                            SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
+            exit_btn = _btn(WINDOW_WIDTH, 540, "Exit", DANGER_COLOR, DANGER_HOVER_COLOR)
+
+            bmap = {
+                p1_btn: "PHASE1",
+                p2_btn: "PHASE2",
+                p3_btn: "PHASE3",
+                help_btn: self.show_help,
+                exit_btn: lambda: setattr(self, 'running', False),
+            }
+            cont, mouse_pos = self._event_loop(bmap)
+            if not cont:
+                if self.current_state == "MENU":
                     self.running = False
-                
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if phase1_btn.is_clicked(mouse_pos) and PHASE1_AVAILABLE:
-                        self.current_state = "PHASE1"
-                        self.phase1_menu()
-                    elif phase2_btn.is_clicked(mouse_pos) and PHASE2_AVAILABLE:
-                        self.current_state = "PHASE2"
-                        self.phase2_menu()
-                    elif phase3_btn.is_clicked(mouse_pos) and PHASE3_AVAILABLE:
-                        self.current_state = "PHASE3"
-                        self.phase3_menu()
-                    elif help_btn.is_clicked(mouse_pos):
-                        self.show_help()
-                    elif exit_btn.is_clicked(mouse_pos):
-                        self.running = False
-            
-            # Draw all buttons
-            phase1_btn.draw(self.screen, mouse_pos)
-            phase2_btn.draw(self.screen, mouse_pos)
-            phase3_btn.draw(self.screen, mouse_pos)
-            help_btn.draw(self.screen, mouse_pos)
-            exit_btn.draw(self.screen, mouse_pos)
-            
-            # Draw footer
-            footer_font = get_font(SMALL_FONT_SIZE)
-            footer_text = footer_font.render(
-                "Use mouse to navigate • ESC to go back",
-                True, TEXT_MUTED
-            )
-            footer_rect = footer_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT - 30))
-            self.screen.blit(footer_text, footer_rect)
-            
+                break
+
+            for b in [p1_btn, p2_btn, p3_btn, help_btn, exit_btn]:
+                b.draw(self.screen, mouse_pos)
+            self._footer()
             pygame.display.flip()
             self.clock.tick(FPS)
-    
+
+    # ── Phase 1 menu ──────────────────────────────────────────────────────────
+
     def phase1_menu(self):
-        """Phase 1: Data Structures submenu"""
         while self.running and self.current_state == "PHASE1":
             self.screen.fill(BG_COLOR)
-            
-            self.draw_title("PHASE 1: Data Structures", 80)
-            self.draw_subtitle("Explore foundational data structures", 130)
-            
-            # Create submenu buttons
-            stack_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT,
-                             "Stack Visualizer", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            queue_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 270, BUTTON_WIDTH, BUTTON_HEIGHT,
-                             "Queue Visualizer", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            linked_list_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 340, BUTTON_WIDTH, BUTTON_HEIGHT,
-                                    "Linked List Editor", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            bst_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 410, BUTTON_WIDTH, BUTTON_HEIGHT,
-                           "Binary Search Tree", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 500, BUTTON_WIDTH, BUTTON_HEIGHT,
-                            "← Back to Menu", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            
-            mouse_pos = pygame.mouse.get_pos()
-            
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.current_state = "MENU"
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if stack_btn.is_clicked(mouse_pos):
-                        StackVisualizer(self.screen).run()
-                    elif queue_btn.is_clicked(mouse_pos):
-                        QueueVisualizer(self.screen).run()
-                    elif linked_list_btn.is_clicked(mouse_pos):
-                        LinkedListVisualizer(self.screen).run()
-                    elif bst_btn.is_clicked(mouse_pos):
-                        BSTVisualizer(self.screen).run()
-                    elif back_btn.is_clicked(mouse_pos):
-                        self.current_state = "MENU"
-            
-            stack_btn.draw(self.screen, mouse_pos)
-            queue_btn.draw(self.screen, mouse_pos)
-            linked_list_btn.draw(self.screen, mouse_pos)
-            bst_btn.draw(self.screen, mouse_pos)
-            back_btn.draw(self.screen, mouse_pos)
-            
+            self._title("PHASE 1: Data Structures", 80)
+            self._subtitle("Explore foundational data structures", 130)
+
+            W2 = WINDOW_WIDTH // 2
+            stack_btn  = Button(W2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT, "Stack Visualizer",      BUTTON_COLOR,            BUTTON_HOVER_COLOR)
+            queue_btn  = Button(W2 - BUTTON_WIDTH // 2, 270, BUTTON_WIDTH, BUTTON_HEIGHT, "Queue Visualizer",      BUTTON_COLOR,            BUTTON_HOVER_COLOR)
+            ll_btn     = Button(W2 - BUTTON_WIDTH // 2, 340, BUTTON_WIDTH, BUTTON_HEIGHT, "Linked List Editor",    BUTTON_COLOR,            BUTTON_HOVER_COLOR)
+            bst_btn    = Button(W2 - BUTTON_WIDTH // 2, 410, BUTTON_WIDTH, BUTTON_HEIGHT, "Binary Search Tree",    BUTTON_COLOR,            BUTTON_HOVER_COLOR)
+            test_btn   = Button(W2 - BUTTON_WIDTH // 2, 490, BUTTON_WIDTH, BUTTON_HEIGHT, "🧪 Run Phase 1 Tests",  INFO_COLOR,              BUTTON_HOVER_COLOR)
+            test_btn.set_enabled(TESTS_AVAILABLE)
+            back_btn   = Button(W2 - BUTTON_WIDTH // 2, 575, BUTTON_WIDTH, BUTTON_HEIGHT, "← Back to Menu",        SECONDARY_BUTTON_COLOR,  SECONDARY_BUTTON_HOVER)
+
+            bmap = {
+                stack_btn: lambda: StackVisualizer(self.screen).run(),
+                queue_btn: lambda: QueueVisualizer(self.screen).run(),
+                ll_btn:    lambda: LinkedListVisualizer(self.screen).run(),
+                bst_btn:   lambda: BSTVisualizer(self.screen).run(),
+                test_btn:  lambda: TestRunnerVisualizer(self.screen, 1).run(),
+                back_btn:  "MENU",
+            }
+            cont, mouse_pos = self._event_loop(bmap)
+            if not cont:
+                self.current_state = "MENU"
+                break
+
+            for b in [stack_btn, queue_btn, ll_btn, bst_btn, test_btn, back_btn]:
+                b.draw(self.screen, mouse_pos)
             pygame.display.flip()
             self.clock.tick(FPS)
-    
+
+    # ── Phase 2 menu ──────────────────────────────────────────────────────────
+
     def phase2_menu(self):
-        """Phase 2: Algorithms submenu"""
         while self.running and self.current_state == "PHASE2":
             self.screen.fill(BG_COLOR)
-            
-            self.draw_title("PHASE 2: Algorithm Visualizer", 80)
-            self.draw_subtitle("Watch algorithms in action", 130)
-            
-            sorting_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT,
-                               "Sorting Algorithms", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            graph_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 270, BUTTON_WIDTH, BUTTON_HEIGHT,
-                             "Graph Traversal (BFS/DFS)", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            heap_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 340, BUTTON_WIDTH, BUTTON_HEIGHT,
-                            "Heap Operations", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 430, BUTTON_WIDTH, BUTTON_HEIGHT,
-                            "← Back to Menu", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            
-            mouse_pos = pygame.mouse.get_pos()
-            
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.current_state = "MENU"
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if sorting_btn.is_clicked(mouse_pos):
-                        SortingVisualizer(self.screen).run()
-                    elif graph_btn.is_clicked(mouse_pos):
-                        GraphVisualizer(self.screen).run()
-                    elif heap_btn.is_clicked(mouse_pos):
-                        HeapVisualizer(self.screen).run()
-                    elif back_btn.is_clicked(mouse_pos):
-                        self.current_state = "MENU"
-            
-            sorting_btn.draw(self.screen, mouse_pos)
-            graph_btn.draw(self.screen, mouse_pos)
-            heap_btn.draw(self.screen, mouse_pos)
-            back_btn.draw(self.screen, mouse_pos)
-            
+            self._title("PHASE 2: Algorithm Visualizer", 80)
+            self._subtitle("Watch algorithms in action", 130)
+
+            W2 = WINDOW_WIDTH // 2
+            sort_btn  = Button(W2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT, "Sorting Algorithms",        BUTTON_COLOR,           BUTTON_HOVER_COLOR)
+            graph_btn = Button(W2 - BUTTON_WIDTH // 2, 270, BUTTON_WIDTH, BUTTON_HEIGHT, "Graph Traversal (BFS/DFS)", BUTTON_COLOR,           BUTTON_HOVER_COLOR)
+            heap_btn  = Button(W2 - BUTTON_WIDTH // 2, 340, BUTTON_WIDTH, BUTTON_HEIGHT, "Heap Operations",           BUTTON_COLOR,           BUTTON_HOVER_COLOR)
+            test_btn  = Button(W2 - BUTTON_WIDTH // 2, 420, BUTTON_WIDTH, BUTTON_HEIGHT, "🧪 Run Phase 2 Tests",      INFO_COLOR,             BUTTON_HOVER_COLOR)
+            back_btn  = Button(W2 - BUTTON_WIDTH // 2, 505, BUTTON_WIDTH, BUTTON_HEIGHT, "← Back to Menu",            SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
+            test_btn.set_enabled(TESTS_AVAILABLE)
+
+            bmap = {
+                sort_btn:  lambda: SortingVisualizer(self.screen).run(),
+                graph_btn: lambda: GraphVisualizer(self.screen).run(),
+                heap_btn:  lambda: HeapVisualizer(self.screen).run(),
+                test_btn:  lambda: TestRunnerVisualizer(self.screen, 2).run(),
+                back_btn:  "MENU",
+            }
+            cont, mouse_pos = self._event_loop(bmap)
+            if not cont:
+                self.current_state = "MENU"
+                break
+
+            for b in [sort_btn, graph_btn, heap_btn, test_btn, back_btn]:
+                b.draw(self.screen, mouse_pos)
             pygame.display.flip()
             self.clock.tick(FPS)
-    
+
+    # ── Phase 3 menu ──────────────────────────────────────────────────────────
+
     def phase3_menu(self):
-        """Phase 3: Puzzles submenu"""
         while self.running and self.current_state == "PHASE3":
             self.screen.fill(BG_COLOR)
-            
-            self.draw_title("PHASE 3: Puzzle Challenges", 80)
-            self.draw_subtitle("Apply algorithms to solve puzzles", 130)
-            
-            pathfinding_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT,
-                                    "Pathfinding Puzzle (A*)", BUTTON_COLOR, BUTTON_HOVER_COLOR)
-            back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 290, BUTTON_WIDTH, BUTTON_HEIGHT,
-                            "← Back to Menu", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            
-            mouse_pos = pygame.mouse.get_pos()
-            
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.current_state = "MENU"
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if pathfinding_btn.is_clicked(mouse_pos):
-                        PathfindingVisualizer(self.screen).run()
-                    elif back_btn.is_clicked(mouse_pos):
-                        self.current_state = "MENU"
-            
-            pathfinding_btn.draw(self.screen, mouse_pos)
-            back_btn.draw(self.screen, mouse_pos)
-            
-            # Note about other puzzles
-            note_font = get_font(SMALL_FONT_SIZE)
-            note_text = note_font.render(
-                "Event Queue & DP Puzzle coming soon - Pathfinding fully functional!",
-                True, TEXT_MUTED
-            )
-            note_rect = note_text.get_rect(center=(WINDOW_WIDTH // 2, 360))
-            self.screen.blit(note_text, note_rect)
-            
+            self._title("PHASE 3: Puzzle Challenges", 80)
+            self._subtitle("Apply algorithms to solve puzzles", 130)
+
+            W2 = WINDOW_WIDTH // 2
+            path_btn  = Button(W2 - BUTTON_WIDTH // 2, 200, BUTTON_WIDTH, BUTTON_HEIGHT, "Pathfinding Puzzle (A*)",   BUTTON_COLOR,           BUTTON_HOVER_COLOR)
+            eq_btn    = Button(W2 - BUTTON_WIDTH // 2, 270, BUTTON_WIDTH, BUTTON_HEIGHT, "Event Queue Simulator",     BUTTON_COLOR,           BUTTON_HOVER_COLOR)
+            dp_btn    = Button(W2 - BUTTON_WIDTH // 2, 340, BUTTON_WIDTH, BUTTON_HEIGHT, "DP Grid Path Puzzle",        BUTTON_COLOR,           BUTTON_HOVER_COLOR)
+            test_btn  = Button(W2 - BUTTON_WIDTH // 2, 420, BUTTON_WIDTH, BUTTON_HEIGHT, "🧪 Run Phase 3 Tests",      INFO_COLOR,             BUTTON_HOVER_COLOR)
+            back_btn  = Button(W2 - BUTTON_WIDTH // 2, 505, BUTTON_WIDTH, BUTTON_HEIGHT, "← Back to Menu",            SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
+            test_btn.set_enabled(TESTS_AVAILABLE)
+
+            bmap = {
+                path_btn: lambda: PathfindingVisualizer(self.screen).run(),
+                eq_btn:   lambda: EventQueueVisualizer(self.screen).run(),
+                dp_btn:   lambda: DPPuzzleVisualizer(self.screen).run(),
+                test_btn: lambda: TestRunnerVisualizer(self.screen, 3).run(),
+                back_btn: "MENU",
+            }
+            cont, mouse_pos = self._event_loop(bmap)
+            if not cont:
+                self.current_state = "MENU"
+                break
+
+            for b in [path_btn, eq_btn, dp_btn, test_btn, back_btn]:
+                b.draw(self.screen, mouse_pos)
             pygame.display.flip()
             self.clock.tick(FPS)
-    
+
+    # ── Help screen ───────────────────────────────────────────────────────────
+
     def show_help(self):
-        """Display help and instructions screen"""
-        showing_help = True
-        while showing_help and self.running:
+        showing = True
+        while showing and self.running:
             self.screen.fill(BG_COLOR)
-            
-            self.draw_title("Help & Instructions", 60)
-            
-            help_font = get_font(NORMAL_FONT_SIZE)
-            help_lines = [
-                "Welcome to DSA Explorer - Complete Edition!",
+            self._title("Help & Instructions", 60)
+
+            lines = [
+                "Welcome to DSA Explorer — Complete Edition!",
                 "",
-                "✓ Phase 1 - ALL 4 Data Structures Available:",
-                "  • Stack, Queue, Linked List, Binary Search Tree",
+                "✓  Phase 1 — All 4 Data Structures:",
+                "     Stack  •  Queue  •  Linked List  •  Binary Search Tree",
                 "",
-                "✓ Phase 2 - ALL 3 Algorithm Visualizers Available:",
-                "  • Sorting (Bubble, Selection, Merge)",
-                "  • Graph Traversal (BFS & DFS)",
-                "  • Heap Operations (Min-Heap & Max-Heap)",
+                "✓  Phase 2 — All 3 Algorithm Visualizers:",
+                "     Sorting (Bubble / Selection / Merge)",
+                "     Graph Traversal (BFS & DFS)",
+                "     Heap Operations (Min-Heap & Max-Heap)",
                 "",
-                "✓ Phase 3 - Pathfinding Puzzle Available:",
-                "  • A* and Dijkstra's Algorithms",
+                "✓  Phase 3 — All 3 Puzzle Visualizers:",
+                "     Pathfinding (A* & Dijkstra)",
+                "     Event Queue Simulator (Priority Queue)",
+                "     DP Grid Path Counter (Tabulation + animation)",
+                "",
+                "🧪  In-App Test Runner — available in each Phase submenu",
+                "     Runs the full unittest suite and streams results live.",
+                "     Use ↑↓ / scroll to navigate results.",
                 "",
                 "Controls:",
-                "• Mouse: Click buttons and interact with visualizations",
-                "• ESC: Return to previous menu",
-                "• Each visualizer has specific on-screen instructions",
-                "",
-                "All visualizers support standalone mode too!",
-                "Run: python phaseN/visualizers/visualizer_name.py"
+                "  Mouse — click buttons & interact with visualizations",
+                "  ESC   — return to previous menu",
+                "  Space — play/pause in supported visualizers",
             ]
-            
-            y_offset = 130
-            for line in help_lines:
-                text_surface = help_font.render(line, True, TEXT_COLOR)
-                text_rect = text_surface.get_rect(center=(WINDOW_WIDTH // 2, y_offset))
-                self.screen.blit(text_surface, text_rect)
-                y_offset += 28
-            
-            back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, 720, BUTTON_WIDTH, BUTTON_HEIGHT,
-                            "← Back to Menu", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
-            
+
+            font = get_font(NORMAL_FONT_SIZE)
+            y = 130
+            for line in lines:
+                s = font.render(line, True, TEXT_COLOR)
+                self.screen.blit(s, s.get_rect(center=(WINDOW_WIDTH // 2, y)))
+                y += 26
+
+            back_btn = Button(WINDOW_WIDTH // 2 - BUTTON_WIDTH // 2, y + 20,
+                              BUTTON_WIDTH, BUTTON_HEIGHT,
+                              "← Back to Menu", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER)
             mouse_pos = pygame.mouse.get_pos()
-            
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
-                    showing_help = False
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        showing_help = False
+                    showing = False
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    showing = False
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if back_btn.is_clicked(mouse_pos):
-                        showing_help = False
-            
+                        showing = False
+
             back_btn.draw(self.screen, mouse_pos)
-            
             pygame.display.flip()
             self.clock.tick(FPS)
-    
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
+
     def run(self):
-        """Main application loop"""
-        self.main_menu()
+        while self.running:
+            if self.current_state == "MENU":
+                self.main_menu()
+            elif self.current_state == "PHASE1":
+                self.phase1_menu()
+            elif self.current_state == "PHASE2":
+                self.phase2_menu()
+            elif self.current_state == "PHASE3":
+                self.phase3_menu()
+            else:
+                self.current_state = "MENU"
+
         pygame.quit()
         sys.exit()
 
 
 if __name__ == "__main__":
-    app = DSAExplorer()
-    app.run()
+    DSAExplorer().run()
