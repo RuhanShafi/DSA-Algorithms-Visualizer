@@ -1,6 +1,6 @@
 """
 Dynamic Programming Puzzle Visualizer with PyGame
-Interactive grid path counting with animated DP table fill
+Place in project root alongside test.py.
 """
 
 import pygame
@@ -8,14 +8,15 @@ import sys
 import os
 from collections import deque
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+# Always resolve relative to this file so it works from any working directory
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 from config import *
 from utils.ui_components import Button, Label, Panel, draw_instructions, get_font
 from phase3.dp_puzzle import GridPathDP
 
-
-# ── Color helpers ─────────────────────────────────────────────────────────────
 
 def _lerp_color(a, b, t):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
@@ -34,24 +35,26 @@ class DPPuzzleVisualizer:
 
         self.dp = GridPathDP(self.GRID_ROWS, self.GRID_COLS)
 
-        # Grid display origin
-        self.cell_size = 52
-        self.grid_x = 310
+        # Compute cell size to fit: width = 1400 - 310 left panel - 20 right margin
+        # height = 900 - 140 top - 160 bottom stats+legend
+        avail_w = WINDOW_WIDTH - 310 - 20
+        avail_h = WINDOW_HEIGHT - 140 - 170
+        self.cell_size = min(avail_w // self.GRID_COLS, avail_h // self.GRID_ROWS)
+        self.cell_size = max(self.cell_size, 30)   # at least 30px
+
+        self.grid_x = 305
         self.grid_y = 140
 
-        # Draw-mode: 'obstacle' | 'start' | 'goal'  (start/goal fixed for now)
-        self.draw_mode = 'obstacle'
         self.mouse_pressed = False
         self.last_cell = None
 
-        # Animation state
+        # Animation
         self.animating = False
-        self.anim_queue = deque()   # (row, col, value) steps
-        self.anim_revealed = {}     # (r,c) -> display_value
+        self.anim_queue = deque()
+        self.anim_revealed = {}   # (r,c) -> value
         self.anim_timer = 0
-        self.anim_speed = 60        # ms per cell
+        self.anim_speed = 60      # ms per step
         self.highlight_cell = None
-        self.highlight_timer = 0
 
         # Results
         self.dp_table = None
@@ -59,38 +62,37 @@ class DPPuzzleVisualizer:
         self.total_paths = 0
         self.solved = False
 
-        # Start / goal (fixed corners by default)
         self.start = (0, 0)
         self.goal = (self.GRID_ROWS - 1, self.GRID_COLS - 1)
 
+        self.status_text = "Click cells to add walls, then press Solve."
         self.setup_ui()
 
-    # ── UI Setup ─────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
 
     def setup_ui(self):
-        bx = 20
-        self.solve_btn = Button(bx, 160, 150, 42, "▶ Solve (DP)", SUCCESS_COLOR, "#059669", font_size=14)
-        self.show_path_btn = Button(bx, 212, 150, 42, "Show Path", INFO_COLOR, BUTTON_HOVER_COLOR, font_size=14)
-        self.clear_walls_btn = Button(bx, 264, 150, 42, "Clear Walls", WARNING_COLOR, "#d97706", font_size=14)
-        self.reset_btn = Button(bx, 316, 150, 42, "Reset All", DANGER_COLOR, DANGER_HOVER_COLOR, font_size=14)
+        bx, bw, bh = 20, 265, 40
+        self.solve_btn       = Button(bx, 155, bw, bh, "Solve (DP)",   SUCCESS_COLOR,          "#059669",              font_size=14)
+        self.show_path_btn   = Button(bx, 203, bw, bh, "Show Path",    INFO_COLOR,             BUTTON_HOVER_COLOR,     font_size=14)
+        self.clear_walls_btn = Button(bx, 251, bw, bh, "Clear Walls",  WARNING_COLOR,          "#d97706",              font_size=14)
+        self.reset_btn       = Button(bx, 299, bw, bh, "Reset All",    DANGER_COLOR,           DANGER_HOVER_COLOR,     font_size=14)
 
-        self.slow_btn = Button(bx, 390, 70, 34, "Slow", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER, font_size=13)
-        self.fast_btn = Button(bx + 80, 390, 70, 34, "Fast", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER, font_size=13)
+        hw = (bw - 10) // 2
+        self.slow_btn = Button(bx,        355, hw, 34, "Slow",  SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER, font_size=13)
+        self.fast_btn = Button(bx+hw+10,  355, hw, 34, "Fast",  SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER, font_size=13)
 
-        self.back_btn = Button(bx, 820, 130, 44, "← Back", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER, font_size=14)
-
-        self.status_label = Label(bx, 440, "", SMALL_FONT_SIZE, TEXT_SECONDARY)
+        self.back_btn = Button(bx, WINDOW_HEIGHT - 70, bw, 44, "<- Back", SECONDARY_BUTTON_COLOR, SECONDARY_BUTTON_HOVER, font_size=14)
 
         self.instructions = [
-            "Click grid cells to toggle walls",
-            "Green cell = Start (top-left)",
-            "Red cell = Goal (bottom-right)",
-            "DP fills table bottom-up",
-            "Each cell = paths from Start",
-            "Path shown in gold",
+            "Click/drag grid cells to place walls",
+            "Green = Start  |  Red = Goal",
+            "Solve fills DP table cell-by-cell",
+            "Each value = # unique paths to cell",
+            "Show Path traces one valid route",
+            "Slow/Fast adjusts animation speed",
         ]
 
-    # ── Event Handling ────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
 
     def handle_events(self):
         mouse_pos = pygame.mouse.get_pos()
@@ -102,7 +104,10 @@ class DPPuzzleVisualizer:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return False
 
-            if event.type == pygame.MOUSEBUTTONDOWN and not self.animating:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if self.animating:
+                    # any button click skips animation
+                    pass
                 if self.solve_btn.is_clicked(mouse_pos):
                     self._start_solve()
                 elif self.show_path_btn.is_clicked(mouse_pos):
@@ -112,16 +117,17 @@ class DPPuzzleVisualizer:
                 elif self.reset_btn.is_clicked(mouse_pos):
                     self._reset()
                 elif self.slow_btn.is_clicked(mouse_pos):
-                    self.anim_speed = 150
-                    self.status_label.set_text("Speed: Slow")
+                    self.anim_speed = 160
+                    self.status_text = "Speed: Slow"
                 elif self.fast_btn.is_clicked(mouse_pos):
-                    self.anim_speed = 15
-                    self.status_label.set_text("Speed: Fast")
+                    self.anim_speed = 8
+                    self.status_text = "Speed: Fast"
                 elif self.back_btn.is_clicked(mouse_pos):
                     return False
                 else:
-                    self.mouse_pressed = True
-                    self._handle_grid_click(mouse_pos)
+                    if not self.animating:
+                        self.mouse_pressed = True
+                        self._handle_grid_click(mouse_pos)
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 self.mouse_pressed = False
@@ -134,23 +140,24 @@ class DPPuzzleVisualizer:
         return True
 
     def _handle_grid_click(self, mouse_pos):
-        gx, gy = self.grid_x, self.grid_y
         mx, my = mouse_pos
-        if not (gx <= mx < gx + self.GRID_COLS * self.cell_size and
-                gy <= my < gy + self.GRID_ROWS * self.cell_size):
+        gx, gy = self.grid_x, self.grid_y
+        cs = self.cell_size
+        if not (gx <= mx < gx + self.GRID_COLS * cs and gy <= my < gy + self.GRID_ROWS * cs):
             return
-        col = (mx - gx) // self.cell_size
-        row = (my - gy) // self.cell_size
+        col = (mx - gx) // cs
+        row = (my - gy) // cs
+        if not (0 <= row < self.GRID_ROWS and 0 <= col < self.GRID_COLS):
+            return
         if (row, col) == self.last_cell:
             return
         self.last_cell = (row, col)
         if (row, col) in (self.start, self.goal):
             return
         self.dp.grid[row][col] ^= 1
-        # reset solved state when grid changes
         self._clear_solve_state()
 
-    # ── Solve Logic ───────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _start_solve(self):
         self._clear_solve_state()
@@ -159,31 +166,36 @@ class DPPuzzleVisualizer:
         self.dp_table = self.dp.get_dp_table()
         self.solved = True
 
-        # Build animation queue from computation order
         self.anim_revealed.clear()
         self.anim_queue = deque(self.dp.get_computation_order())
-        self.animating = True
-        self.status_label.set_text("Filling DP table…")
+        self.animating = bool(self.anim_queue)
+        self.status_text = "Filling DP table..."
 
     def _show_path(self):
         if not self.solved:
-            self.status_label.set_text("Solve first!")
+            self.status_text = "Solve first!"
             return
+        if self.animating:
+            # fast-forward: reveal everything now
+            while self.anim_queue:
+                r, c, v = self.anim_queue.popleft()
+                self.anim_revealed[(r, c)] = v
+            self.animating = False
         self.path = self.dp.reconstruct_one_path() or []
         if self.path:
-            self.status_label.set_text(f"One path shown  |  Total unique paths: {self.total_paths:,}")
+            self.status_text = f"Path length: {len(self.path)}  |  Total paths: {self.total_paths:,}"
         else:
-            self.status_label.set_text("No path exists!")
+            self.status_text = "No path exists!"
 
     def _clear_walls(self):
         self.dp.clear_obstacles()
         self._clear_solve_state()
-        self.status_label.set_text("Walls cleared.")
+        self.status_text = "Walls cleared."
 
     def _reset(self):
         self.dp = GridPathDP(self.GRID_ROWS, self.GRID_COLS)
         self._clear_solve_state()
-        self.status_label.set_text("Reset.")
+        self.status_text = "Reset. Click cells to add walls."
 
     def _clear_solve_state(self):
         self.animating = False
@@ -193,55 +205,59 @@ class DPPuzzleVisualizer:
         self.path = []
         self.solved = False
         self.total_paths = 0
+        self.highlight_cell = None
 
-    # ── Animation Update ──────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
 
     def update(self, dt):
         if not self.animating:
             return
         self.anim_timer += dt
-        steps = max(1, self.anim_timer // self.anim_speed)
-        self.anim_timer %= self.anim_speed
-        for _ in range(int(steps)):
+        # consume as many steps as time allows
+        while self.anim_timer >= self.anim_speed:
+            self.anim_timer -= self.anim_speed
             if not self.anim_queue:
                 self.animating = False
-                self.status_label.set_text(
-                    f"Done!  Total paths: {self.total_paths:,}  |  Press 'Show Path' to trace one."
+                self.status_text = (
+                    f"Done!  Total paths: {self.total_paths:,}  |  "
+                    "Press 'Show Path' to trace one."
                 )
+                self.highlight_cell = None
                 return
             r, c, v = self.anim_queue.popleft()
             self.anim_revealed[(r, c)] = v
             self.highlight_cell = (r, c)
 
-    # ── Drawing ───────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _cell_rect(self, row, col):
-        x = self.grid_x + col * self.cell_size
-        y = self.grid_y + row * self.cell_size
-        return pygame.Rect(x, y, self.cell_size, self.cell_size)
+        return pygame.Rect(
+            self.grid_x + col * self.cell_size,
+            self.grid_y + row * self.cell_size,
+            self.cell_size, self.cell_size
+        )
 
     def _value_color(self, val, max_val):
         if max_val == 0:
             return BG_TERTIARY
         t = min(1.0, val / max(max_val, 1))
-        low = (30, 58, 100)   # dark blue
-        high = (59, 130, 246)  # bright blue
-        return _lerp_color(low, high, t)
+        return _lerp_color((25, 55, 105), (59, 130, 246), t)
 
     def draw(self):
         self.screen.fill(BG_COLOR)
         mouse_pos = pygame.mouse.get_pos()
 
-        # Title
+        # ── Title ─────────────────────────────────────────────────────────────
+        get_font(HEADING_FONT_SIZE).render   # warm up
         tf = get_font(HEADING_FONT_SIZE)
-        t = tf.render("Dynamic Programming  —  Grid Path Counter", True, TEXT_COLOR)
-        self.screen.blit(t, t.get_rect(center=(WINDOW_WIDTH // 2, 55)))
+        t = tf.render("Dynamic Programming  --  Grid Path Counter", True, TEXT_COLOR)
+        self.screen.blit(t, t.get_rect(center=(WINDOW_WIDTH // 2, 50)))
         sub = get_font(SMALL_FONT_SIZE).render(
-            "Count unique paths from Start → Goal (move right or down only)", True, TEXT_MUTED)
-        self.screen.blit(sub, sub.get_rect(center=(WINDOW_WIDTH // 2, 85)))
+            "Count unique paths: Start -> Goal  (right or down moves only)", True, TEXT_MUTED)
+        self.screen.blit(sub, sub.get_rect(center=(WINDOW_WIDTH // 2, 80)))
 
-        # Left panel
-        Panel(15, 140, 275, WINDOW_HEIGHT - 160, BG_SECONDARY, TEXT_MUTED).draw(self.screen)
+        # ── Left panel ────────────────────────────────────────────────────────
+        Panel(10, 130, 285, WINDOW_HEIGHT - 145, BG_SECONDARY, TEXT_MUTED).draw(self.screen)
 
         self.solve_btn.draw(self.screen, mouse_pos)
         self.show_path_btn.draw(self.screen, mouse_pos)
@@ -250,15 +266,31 @@ class DPPuzzleVisualizer:
         self.slow_btn.draw(self.screen, mouse_pos)
         self.fast_btn.draw(self.screen, mouse_pos)
         self.back_btn.draw(self.screen, mouse_pos)
-        self.status_label.draw(self.screen)
+
+        # Status
+        sf = get_font(SMALL_FONT_SIZE)
+        # word-wrap status across left panel width
+        words = self.status_text.split()
+        line, lines_out = "", []
+        for w in words:
+            test = (line + " " + w).strip()
+            if sf.size(test)[0] < 265:
+                line = test
+            else:
+                lines_out.append(line)
+                line = w
+        if line:
+            lines_out.append(line)
+        for i, l in enumerate(lines_out[:3]):
+            st = sf.render(l, True, TEXT_SECONDARY)
+            self.screen.blit(st, (20, 408 + i * 20))
 
         # Instructions
-        inst_y = 510
-        get_font(NORMAL_FONT_SIZE)
-        Panel(20, inst_y, 265, 185, BG_TERTIARY, TEXT_MUTED).draw(self.screen)
+        inst_y = 480
+        Panel(15, inst_y, 275, 155, BG_TERTIARY, TEXT_MUTED).draw(self.screen)
         ih = get_font(SMALL_FONT_SIZE).render("How it works:", True, TEXT_COLOR)
-        self.screen.blit(ih, (30, inst_y + 10))
-        draw_instructions(self.screen, self.instructions, 28, inst_y + 32)
+        self.screen.blit(ih, (25, inst_y + 8))
+        draw_instructions(self.screen, self.instructions, 22, inst_y + 30)
 
         # ── Grid ──────────────────────────────────────────────────────────────
         max_val = max(self.anim_revealed.values(), default=1) or 1
@@ -268,7 +300,6 @@ class DPPuzzleVisualizer:
                 rect = self._cell_rect(row, col)
                 cell = (row, col)
 
-                # Background
                 if cell == self.start:
                     bg = START_COLOR
                 elif cell == self.goal:
@@ -278,64 +309,77 @@ class DPPuzzleVisualizer:
                 elif cell in self.path:
                     bg = PATH_FOUND_COLOR
                 elif cell in self.anim_revealed:
-                    v = self.anim_revealed[cell]
-                    bg = self._value_color(v, max_val)
+                    bg = self._value_color(self.anim_revealed[cell], max_val)
                 else:
                     bg = GRID_BG_COLOR
 
                 pygame.draw.rect(self.screen, bg, rect)
-                border_col = (255, 255, 100) if cell == self.highlight_cell else GRID_LINE_COLOR
-                border_w = 2 if cell == self.highlight_cell else 1
+
+                border_col = (255, 255, 80) if cell == self.highlight_cell else GRID_LINE_COLOR
+                border_w   = 2              if cell == self.highlight_cell else 1
                 pygame.draw.rect(self.screen, border_col, rect, border_w)
 
-                # Value label
-                if cell in self.anim_revealed and self.dp.grid[row][col] == 0:
-                    v = self.anim_revealed[cell]
-                    s = str(v) if v < 1000 else "…"
-                    fs = 14 if v < 100 else 11
-                    vf = get_font(fs)
-                    vt = vf.render(s, True, TEXT_COLOR if bg != GRID_BG_COLOR else (100, 100, 120))
-                    self.screen.blit(vt, vt.get_rect(center=rect.center))
+                # DP value text — only for non-wall, non-start/goal cells
+                if cell not in (self.start, self.goal) and self.dp.grid[row][col] == 0:
+                    if cell in self.anim_revealed:
+                        v = self.anim_revealed[cell]
+                        # pick font size so it fits in the cell
+                        if v < 10:
+                            fs = 16
+                        elif v < 100:
+                            fs = 14
+                        elif v < 10000:
+                            fs = 11
+                        else:
+                            fs = 9
+                        vt = get_font(fs).render(str(v), True, TEXT_COLOR)
+                        # clip text to cell
+                        if vt.get_width() <= rect.width - 4:
+                            self.screen.blit(vt, vt.get_rect(center=rect.center))
 
-                # Start / Goal labels
+                # S / G label on start/goal
                 if cell == self.start:
-                    lt = get_font(11).render("S", True, TEXT_COLOR)
+                    lt = get_font(16).render("S", True, TEXT_COLOR)
                     self.screen.blit(lt, lt.get_rect(center=rect.center))
                 elif cell == self.goal:
-                    lt = get_font(11).render("G", True, TEXT_COLOR)
+                    lt = get_font(16).render("G", True, TEXT_COLOR)
                     self.screen.blit(lt, lt.get_rect(center=rect.center))
 
-        # ── Stats bar below grid ───────────────────────────────────────────────
-        grid_bottom = self.grid_y + self.GRID_ROWS * self.cell_size + 10
-        Panel(self.grid_x, grid_bottom, self.GRID_COLS * self.cell_size, 60, BG_SECONDARY, TEXT_MUTED).draw(self.screen)
-        sf = get_font(SMALL_FONT_SIZE)
-        revealed = len(self.anim_revealed)
-        total_cells = self.GRID_ROWS * self.GRID_COLS - sum(self.dp.grid[r][c] for r in range(self.GRID_ROWS) for c in range(self.GRID_COLS))
-        parts = [
-            f"Grid: {self.GRID_ROWS}×{self.GRID_COLS}",
-            f"Walls: {sum(self.dp.grid[r][c] for r in range(self.GRID_ROWS) for c in range(self.GRID_COLS))}",
-            f"Cells filled: {revealed}/{total_cells}",
-            f"Total paths: {self.total_paths:,}" if self.solved else "Not solved yet",
-        ]
-        for i, p in enumerate(parts):
-            tx = sf.render(p, True, TEXT_SECONDARY)
-            self.screen.blit(tx, (self.grid_x + 10 + i * (self.GRID_COLS * self.cell_size // 4), grid_bottom + 20))
+        # ── Stats bar ─────────────────────────────────────────────────────────
+        grid_w    = self.GRID_COLS * self.cell_size
+        grid_bot  = self.grid_y + self.GRID_ROWS * self.cell_size
+        stats_y   = grid_bot + 8
+        Panel(self.grid_x, stats_y, grid_w, 52, BG_SECONDARY, TEXT_MUTED).draw(self.screen)
 
-        # Legend
-        leg_y = grid_bottom + 75
+        wall_count = sum(self.dp.grid[r][c]
+                         for r in range(self.GRID_ROWS) for c in range(self.GRID_COLS))
+        walkable   = self.GRID_ROWS * self.GRID_COLS - wall_count
+        stat_parts = [
+            f"Grid: {self.GRID_ROWS}x{self.GRID_COLS}",
+            f"Walls: {wall_count}",
+            f"Filled: {len(self.anim_revealed)}/{walkable}",
+            f"Paths: {self.total_paths:,}" if self.solved else "Not solved",
+        ]
+        col_w = grid_w // len(stat_parts)
+        for i, p in enumerate(stat_parts):
+            tx = get_font(SMALL_FONT_SIZE).render(p, True, TEXT_SECONDARY)
+            self.screen.blit(tx, (self.grid_x + 8 + i * col_w, stats_y + 17))
+
+        # ── Legend ────────────────────────────────────────────────────────────
+        leg_y  = stats_y + 60
         legend = [
-            (START_COLOR, "Start"),
-            (END_COLOR, "Goal"),
-            (WALL_COLOR, "Wall (click to toggle)"),
-            (PATH_FOUND_COLOR, "Path"),
-            ((59, 130, 246), "DP value (# paths)"),
+            (START_COLOR,       "Start"),
+            (END_COLOR,         "Goal"),
+            (WALL_COLOR,        "Wall"),
+            (PATH_FOUND_COLOR,  "Path"),
+            ((59, 130, 246),    "DP value"),
         ]
         lx = self.grid_x
         for color, label in legend:
-            pygame.draw.rect(self.screen, color, (lx, leg_y, 16, 16), border_radius=3)
+            pygame.draw.rect(self.screen, color, (lx, leg_y, 14, 14), border_radius=2)
             lt = get_font(12).render(label, True, TEXT_SECONDARY)
-            self.screen.blit(lt, (lx + 20, leg_y + 1))
-            lx += lt.get_width() + 50
+            self.screen.blit(lt, (lx + 18, leg_y + 1))
+            lx += lt.get_width() + 36
 
         pygame.display.flip()
 
